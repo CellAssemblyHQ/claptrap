@@ -44,6 +44,9 @@ defmodule Claptrap.MixProject do
       {:bandit, "~> 1.6"},
       {:jason, "~> 1.4"},
       {:req, "~> 0.5"},
+      {:ex_aws, "~> 2.5"},
+      {:ex_aws_s3, "~> 2.5"},
+      {:nimble_options, "~> 1.1"},
       {:sweet_xml, "~> 0.7"},
       {:open_api_spex, "~> 3.21"},
 
