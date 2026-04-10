@@ -70,8 +70,8 @@ defmodule Claptrap.Storage do
       :ok = Claptrap.Storage.delete("feed-cache.xml")
   """
 
-  @key_pattern ~r/\A[a-zA-Z0-9][a-zA-Z0-9._-]*\z/
-  @prefix_pattern ~r/\A[a-zA-Z0-9][a-zA-Z0-9._-]*\z/
+  @key_pattern ~r/\A[a-zA-Z0-9][a-zA-Z0-9.\/_-]*\z/
+  @prefix_pattern ~r/\A[a-zA-Z0-9][a-zA-Z0-9.\/_-]*\z/
 
   def write(key, data) do
     validate_key!(key)
