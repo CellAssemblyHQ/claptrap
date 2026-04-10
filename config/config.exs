@@ -5,8 +5,7 @@ config :claptrap,
 
 config :claptrap, Claptrap.Repo,
   database: "claptrap_#{config_env()}",
-  hostname: "localhost",
-  show_sensitive_data_on_connection_error: true
+  hostname: "localhost"
 
 config :claptrap, :firecrawl,
   api_key: nil,
