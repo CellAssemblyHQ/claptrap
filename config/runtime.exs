@@ -1,13 +1,19 @@
 import Config
 
-must_get = fn name ->
-  System.get_env(name) || raise "#{name} environment variable is not set"
+required! = fn name ->
+  System.get_env(name) ||
+    raise "Required environment variable #{name} is not set"
 end
 
+# All envs — PORT
+config :claptrap, port: String.to_integer(System.get_env("PORT") || "4000")
+
+# All envs — DATABASE_HOSTNAME
 if db_host = System.get_env("DATABASE_HOSTNAME") do
   config :claptrap, Claptrap.Repo, hostname: db_host
 end
 
+# Test — DATABASE_URL
 if config_env() == :test do
   if url = System.get_env("DATABASE_URL") do
     config :claptrap, Claptrap.Repo,
@@ -16,15 +22,16 @@ if config_env() == :test do
   end
 end
 
+# Prod
 if config_env() == :prod do
-  db_host = must_get.("DATABASE_HOST")
+  db_host = required!.("DATABASE_HOST")
 
   config :claptrap, Claptrap.Repo,
-    database: must_get.("DATABASE"),
+    database: required!.("DATABASE"),
     hostname: db_host,
     port: String.to_integer(System.get_env("DATABASE_PORT") || "5432"),
-    username: must_get.("DATABASE_USERNAME"),
-    password: must_get.("DATABASE_PASSWORD"),
+    username: required!.("DATABASE_USERNAME"),
+    password: required!.("DATABASE_PASSWORD"),
     pool_size: String.to_integer(System.get_env("POOL_SIZE") || "10"),
     ssl: [
       verify: :verify_peer,
@@ -35,9 +42,9 @@ if config_env() == :prod do
       ]
     ]
 
-  config :claptrap, api_key: must_get.("CLAPTRAP_API_KEY")
+  config :claptrap, api_key: required!.("CLAPTRAP_API_KEY")
 
   config :claptrap, :firecrawl,
-    api_key: must_get.("FIRECRAWL_API_KEY"),
+    api_key: required!.("FIRECRAWL_API_KEY"),
     base_url: System.get_env("FIRECRAWL_BASE_URL", "https://api.firecrawl.dev")
 end

@@ -19,7 +19,6 @@ defmodule Claptrap.Application do
   end
 
   defp port do
-    Application.get_env(:claptrap, :port) ||
-      String.to_integer(System.get_env("PORT") || "4000")
+    Application.get_env(:claptrap, :port, 4000)
   end
 end
