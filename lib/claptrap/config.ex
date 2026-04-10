@@ -16,7 +16,7 @@ defmodule Claptrap.Config do
 
   @extraction_schema [
     formats: [type: {:list, :string}, default: []],
-    adapters: [type: :map, default: %{}]
+    adapters: [type: :any, default: %{}]
   ]
 
   @storage_schema [
@@ -54,6 +54,12 @@ defmodule Claptrap.Config do
       |> validate_subsystem!("Claptrap.Storage", @storage_schema)
       |> validate_storage_backend!()
       |> put_subsystem!(Claptrap.Storage)
+
+    :claptrap
+    |> Application.get_env(:firecrawl, [])
+    |> validate_subsystem!(":firecrawl", @firecrawl_schema)
+    |> validate_firecrawl_config!()
+    |> put_subsystem!(:firecrawl)
 
     :claptrap
     |> Application.get_all_env()
@@ -143,6 +149,19 @@ defmodule Claptrap.Config do
     validate_app_api_key!(Keyword.get(config, :api_key))
     validate_app_port!(Keyword.get(config, :port))
     config
+  end
+
+  defp validate_firecrawl_config!(config) do
+    validate_firecrawl_api_key!(Keyword.get(config, :api_key))
+    config
+  end
+
+  defp validate_firecrawl_api_key!(nil), do: :ok
+  defp validate_firecrawl_api_key!(key) when is_binary(key), do: :ok
+
+  defp validate_firecrawl_api_key!(value) do
+    raise ArgumentError,
+          "Invalid configuration for :firecrawl: :api_key must be a string or nil, got: #{inspect(value)}"
   end
 
   defp validate_app_api_key!(nil), do: :ok
