@@ -94,33 +94,24 @@ defmodule Claptrap.Storage.Backends.S3 do
   defp rechunk(enumerable, min_size) do
     Stream.transform(
       enumerable,
-      fn -> <<>> end,
-      fn chunk, buffer ->
+      fn -> {<<>>, false} end,
+      fn chunk, {buffer, seen_chunk?} ->
         buffer = IO.iodata_to_binary([buffer, chunk])
 
         if byte_size(buffer) >= min_size do
-          {[buffer], <<>>}
+          {[buffer], {<<>>, true}}
         else
-          {[], buffer}
+          {[], {buffer, seen_chunk? || byte_size(chunk) > 0}}
         end
       end,
-      fn buffer -> {[buffer], <<>>} end,
-      fn _buffer -> :ok end
+      fn
+        {buffer, _seen_chunk?} when byte_size(buffer) > 0 -> {[buffer], {<<>>, true}}
+        {<<>>, false} -> {[<<>>], {<<>>, true}}
+        {<<>>, true} -> {[], {<<>>, true}}
+      end,
+      fn _state -> :ok end
     )
   end
 
-  defp req_stream(url) do
-    Stream.resource(
-      fn -> Req.get!(url, into: :self) end,
-      fn resp ->
-        ref = resp.body
-
-        receive do
-          {^ref, {:data, chunk}} -> {[chunk], resp}
-          {^ref, :done} -> {:halt, resp}
-        end
-      end,
-      fn _resp -> :ok end
-    )
-  end
+  defp req_stream(url), do: Req.get!(url, into: :self).body
 end

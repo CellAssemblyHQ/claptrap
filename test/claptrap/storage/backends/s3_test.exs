@@ -16,7 +16,7 @@ defmodule Claptrap.Storage.Backends.S3Test do
     config = minio_storage_config(container, bucket)
 
     assert {:ok, _} =
-             ExAws.S3.put_bucket(bucket)
+             ExAws.S3.put_bucket(bucket, config.region)
              |> ExAws.request(ex_aws_overrides(config))
 
     %{config: config}
@@ -109,7 +109,7 @@ defmodule Claptrap.Storage.Backends.S3Test do
   end
 
   defp ensure_testcontainers_started do
-    case Testcontainers.start_link() do
+    case Testcontainers.start() do
       {:ok, _pid} -> :ok
       {:error, {:already_started, _pid}} -> :ok
     end
