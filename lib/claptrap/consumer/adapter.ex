@@ -15,10 +15,13 @@ defmodule Claptrap.Consumer.Adapter do
 
   ## Return shape and failure semantics
 
-  Adapter callbacks return either:
+  `ingest/2` callbacks return one of:
 
-    * `{:ok, [map()]}` with normalized entry attribute maps, or
-    * `{:error, reason}` for failures the caller may retry.
+    * `:ignore` when the adapter does not recognize the input and the worker
+      should silently discard it.
+    * `{:error, reason}` when the adapter recognized the input but failed to
+      normalize it. The worker logs a warning.
+    * `{:ok, [map()]}` with normalized entry attribute maps.
 
   In the current implementation, `Claptrap.Consumer.Worker` retries on
   `{:error, reason}` from `fetch/1`. Exceptions raised by adapters are not
@@ -32,7 +35,8 @@ defmodule Claptrap.Consumer.Adapter do
 
   @callback fetch(source :: Source.t()) :: {:ok, [map()]} | {:error, term()}
 
-  @callback ingest(source :: Source.t(), input :: term()) :: {:ok, [map()]} | {:error, term()}
+  @callback ingest(source :: Source.t(), input :: term()) ::
+              {:ok, [map()]} | {:error, term()} | :ignore
 
   @callback validate_config(config :: map()) :: :ok | {:error, String.t()}
 end
