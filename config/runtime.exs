@@ -13,6 +13,18 @@ if db_host = System.get_env("DATABASE_HOSTNAME") do
   config :claptrap, Claptrap.Repo, hostname: db_host
 end
 
+if System.get_env("STORAGE_BACKEND") == "s3" do
+  config :claptrap, Claptrap.Storage,
+    backend: Claptrap.Storage.Backends.S3,
+    bucket: required!.("S3_BUCKET"),
+    access_key_id: required!.("S3_ACCESS_KEY_ID"),
+    secret_access_key: required!.("S3_SECRET_ACCESS_KEY"),
+    region: System.get_env("S3_REGION") || "auto",
+    host: required!.("S3_HOST"),
+    scheme: System.get_env("S3_SCHEME") || "https://",
+    port: String.to_integer(System.get_env("S3_PORT") || "443")
+end
+
 # Test — DATABASE_URL
 if config_env() == :test do
   if url = System.get_env("DATABASE_URL") do
