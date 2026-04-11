@@ -59,6 +59,11 @@ defmodule Claptrap.Storage.Backends.S3Test do
     test "returns not_found for missing key", ctx do
       assert {:error, :not_found} = S3.read(full_key(ctx, "missing.txt"), ctx.config)
     end
+
+    test "returns error tuple for unreachable endpoint", ctx do
+      bad_config = %{ctx.config | host: "127.0.0.1", port: 1}
+      assert {:error, _reason} = S3.read(full_key(ctx, "missing.txt"), bad_config)
+    end
   end
 
   describe "delete/2" do
@@ -72,6 +77,11 @@ defmodule Claptrap.Storage.Backends.S3Test do
 
     test "returns not_found for missing key", ctx do
       assert {:error, :not_found} = S3.delete(full_key(ctx, "missing.txt"), ctx.config)
+    end
+
+    test "returns error tuple for unreachable endpoint", ctx do
+      bad_config = %{ctx.config | host: "127.0.0.1", port: 1}
+      assert {:error, _reason} = S3.delete(full_key(ctx, "missing.txt"), bad_config)
     end
   end
 
@@ -94,10 +104,29 @@ defmodule Claptrap.Storage.Backends.S3Test do
       assert {:ok, []} = S3.list(full_key(ctx, "no-objects/"), ctx.config)
     end
 
+    test "handles pagination beyond 1000 keys", ctx do
+      prefix = full_key(ctx, "many/")
+
+      keys =
+        for i <- 1..1_005 do
+          key = "#{prefix}#{String.pad_leading(Integer.to_string(i), 4, "0")}.txt"
+          assert :ok = S3.write(key, ["value-#{i}"], ctx.config)
+          key
+        end
+
+      assert {:ok, listed_keys} = S3.list(prefix, ctx.config)
+      assert listed_keys == Enum.sort(keys)
+    end
+
     test "returns error tuple instead of raising on backend errors", ctx do
       missing_bucket_config = %{ctx.config | bucket: "#{ctx.config.bucket}-missing"}
 
       assert {:error, _reason} = S3.list(full_key(ctx, "anything/"), missing_bucket_config)
+    end
+
+    test "returns error tuple for unreachable endpoint", ctx do
+      bad_config = %{ctx.config | host: "127.0.0.1", port: 1}
+      assert {:error, _reason} = S3.list(full_key(ctx, "anything/"), bad_config)
     end
   end
 
@@ -111,6 +140,11 @@ defmodule Claptrap.Storage.Backends.S3Test do
 
     test "returns false for missing key", ctx do
       assert {:ok, false} = S3.exists?(full_key(ctx, "missing.txt"), ctx.config)
+    end
+
+    test "returns error tuple for unreachable endpoint", ctx do
+      bad_config = %{ctx.config | host: "127.0.0.1", port: 1}
+      assert {:error, _reason} = S3.exists?(full_key(ctx, "missing.txt"), bad_config)
     end
   end
 
