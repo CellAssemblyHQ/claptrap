@@ -144,7 +144,7 @@ defmodule Claptrap.Storage.Backends.S3 do
     case ExAws.S3.list_objects_v2(bucket, opts) |> ExAws.request(overrides) do
       {:ok, %{body: body}} ->
         keys = body |> Map.get(:contents, []) |> Enum.map(& &1.key)
-        next_acc = acc ++ keys
+        next_acc = keys ++ acc
 
         if body[:is_truncated] == "true" do
           list_paginated(bucket, prefix, overrides, body[:next_continuation_token], next_acc)
