@@ -91,20 +91,24 @@ defmodule Claptrap.Config do
   defp validate_subsystem!(config, subsystem, schema) do
     normalized = normalize_config!(config, subsystem)
 
-    try do
-      validate_with_passthrough!(normalized, schema)
-    rescue
-      e in NimbleOptions.ValidationError ->
+    case validate_with_passthrough(normalized, schema) do
+      {:ok, validated} ->
+        validated
+
+      {:error, %NimbleOptions.ValidationError{} = e} ->
         raise ArgumentError,
               "Invalid configuration for #{subsystem}: #{Exception.message(e)}"
     end
   end
 
-  defp validate_with_passthrough!(config, schema) do
+  defp validate_with_passthrough(config, schema) do
     known_keys = Keyword.keys(schema)
     {known, extra} = Keyword.split(config, known_keys)
-    validated = NimbleOptions.validate!(known, schema)
-    Keyword.merge(validated, extra)
+
+    case NimbleOptions.validate(known, schema) do
+      {:ok, validated} -> {:ok, Keyword.merge(validated, extra)}
+      {:error, reason} -> {:error, reason}
+    end
   end
 
   defp normalize_config!(config, _subsystem) when is_list(config), do: config
