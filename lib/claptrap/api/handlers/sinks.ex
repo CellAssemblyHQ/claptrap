@@ -84,6 +84,9 @@ defmodule Claptrap.API.Handlers.Sinks do
       {:error, :not_found} ->
         send_resp(conn, 404, Jason.encode!(%{error: "not found"}))
 
+      {:error, reason} when is_binary(reason) ->
+        send_resp(conn, 406, Jason.encode!(%{error: "not acceptable"}))
+
       {:error, _reason} ->
         send_resp(conn, 500, Jason.encode!(%{error: "internal server error"}))
 
@@ -93,10 +96,16 @@ defmodule Claptrap.API.Handlers.Sinks do
   end
 
   defp get_output(adapter, sink_id) do
-    if function_exported?(adapter, :get_output, 1) do
-      adapter.get_output(sink_id)
-    else
-      {:error, :not_supported}
+    case Code.ensure_loaded(adapter) do
+      {:module, _} ->
+        if function_exported?(adapter, :get_output, 1) do
+          adapter.get_output(sink_id)
+        else
+          {:error, :not_supported}
+        end
+
+      _ ->
+        {:error, :not_supported}
     end
   end
 
