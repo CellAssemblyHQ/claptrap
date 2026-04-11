@@ -171,6 +171,12 @@ defmodule Claptrap.Consumer.Adapters.RSSTest do
     end
   end
 
+  describe "ingest/2" do
+    test "returns unsupported for push-mode inputs" do
+      assert {:error, :unsupported} = RSS.ingest(source(), {:email, self(), %{}})
+    end
+  end
+
   defp source(config \\ %{"url" => "https://example.com/feed.xml"}) do
     %Source{id: Ecto.UUID.generate(), type: "rss", name: "Feed", config: config, tags: []}
   end
