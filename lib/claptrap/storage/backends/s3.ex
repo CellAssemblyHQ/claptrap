@@ -59,13 +59,12 @@ defmodule Claptrap.Storage.Backends.S3 do
 
   @impl true
   def list(prefix, %{bucket: bucket} = config) do
-    keys =
-      ExAws.S3.list_objects(bucket, prefix: prefix)
-      |> ExAws.stream!(ex_aws_overrides(config))
-      |> Stream.map(& &1.key)
-      |> Enum.sort()
-
-    {:ok, keys}
+    bucket
+    |> list_paginated(prefix, ex_aws_overrides(config), nil, [])
+    |> case do
+      {:ok, keys} -> {:ok, Enum.sort(keys)}
+      {:error, reason} -> {:error, reason}
+    end
   end
 
   @impl true
@@ -136,4 +135,28 @@ defmodule Claptrap.Storage.Backends.S3 do
   end
 
   defp maybe_cancel_async_response(_response), do: :ok
+
+  defp list_paginated(bucket, prefix, overrides, continuation_token, acc) do
+    opts =
+      [prefix: prefix]
+      |> maybe_put_continuation_token(continuation_token)
+
+    case ExAws.S3.list_objects_v2(bucket, opts) |> ExAws.request(overrides) do
+      {:ok, %{body: body}} ->
+        keys = body |> Map.get(:contents, []) |> Enum.map(& &1.key)
+        next_acc = acc ++ keys
+
+        if body[:is_truncated] == "true" do
+          list_paginated(bucket, prefix, overrides, body[:next_continuation_token], next_acc)
+        else
+          {:ok, next_acc}
+        end
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp maybe_put_continuation_token(opts, nil), do: opts
+  defp maybe_put_continuation_token(opts, token), do: Keyword.put(opts, :continuation_token, token)
 end

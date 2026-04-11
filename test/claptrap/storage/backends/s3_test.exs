@@ -93,6 +93,12 @@ defmodule Claptrap.Storage.Backends.S3Test do
     test "returns empty list for empty prefix scope", ctx do
       assert {:ok, []} = S3.list(full_key(ctx, "no-objects/"), ctx.config)
     end
+
+    test "returns error tuple instead of raising on backend errors", ctx do
+      missing_bucket_config = %{ctx.config | bucket: "#{ctx.config.bucket}-missing"}
+
+      assert {:error, _reason} = S3.list(full_key(ctx, "anything/"), missing_bucket_config)
+    end
   end
 
   describe "exists?/2" do
