@@ -29,7 +29,7 @@ defmodule Claptrap.Storage.Backends.S3 do
       {:ok, _} ->
         aws_config = ExAws.Config.new(:s3, overrides)
         {:ok, url} = ExAws.S3.presigned_url(aws_config, :get, bucket, key)
-        {:ok, req_stream(url)}
+        req_stream(url)
 
       {:error, {:http_error, 404, _}} ->
         {:error, :not_found}
@@ -113,5 +113,27 @@ defmodule Claptrap.Storage.Backends.S3 do
     )
   end
 
-  defp req_stream(url), do: Req.get!(url, into: :self).body
+  defp req_stream(url) do
+    case Req.get(url, into: :self) do
+      {:ok, %Req.Response{status: status, body: body}} when status in 200..299 ->
+        {:ok, body}
+
+      {:ok, %Req.Response{status: 404} = response} ->
+        maybe_cancel_async_response(response)
+        {:error, :not_found}
+
+      {:ok, %Req.Response{status: status, body: body} = response} ->
+        maybe_cancel_async_response(response)
+        {:error, {:http_error, status, body}}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp maybe_cancel_async_response(%Req.Response{body: %Req.Response.Async{}} = response) do
+    Req.cancel_async_response(response)
+  end
+
+  defp maybe_cancel_async_response(_response), do: :ok
 end
