@@ -59,6 +59,7 @@ defmodule Claptrap.Producer.Worker do
   require Logger
 
   alias Claptrap.Catalog
+  alias Claptrap.Producer.Adapter
   alias Claptrap.Registry, as: Reg
 
   @max_retries 5
@@ -71,7 +72,7 @@ defmodule Claptrap.Producer.Worker do
   def init(sink_id) do
     sink = Catalog.get_sink!(sink_id)
 
-    case adapter_for_type(sink.type) do
+    case Adapter.for_type(sink.type) do
       {:ok, adapter} ->
         state = %{
           sink: sink,
@@ -211,7 +212,4 @@ defmodule Claptrap.Producer.Worker do
         state
     end
   end
-
-  defp adapter_for_type("rss"), do: {:ok, Claptrap.Producer.Adapters.RssFeed}
-  defp adapter_for_type(other), do: {:error, "unknown sink type: #{other}"}
 end

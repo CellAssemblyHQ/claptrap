@@ -6,13 +6,26 @@ defmodule Claptrap.API.Handlers.SinksTest do
 
   alias Claptrap.API.Plug, as: APIPlug
   alias Claptrap.Catalog
+  alias Claptrap.Producer.Adapters.RssFeed
 
   @sink_attrs %{type: "webhook", name: "Hook", config: %{"url" => "https://example.com/hook"}}
+  @rss_sink_attrs %{
+    type: "rss",
+    name: "My Feed",
+    config: %{"description" => "A test feed", "link" => "https://example.com/my-feed"}
+  }
 
   defp call(method, path, body \\ nil) do
+    call_with_headers(method, path, [{"authorization", "Bearer test-api-key"}], body)
+  end
+
+  defp call_with_headers(method, path, headers, body \\ nil) do
+    conn = Plug.Test.conn(method, path)
+
     conn =
-      Plug.Test.conn(method, path)
-      |> Plug.Conn.put_req_header("authorization", "Bearer test-api-key")
+      Enum.reduce(headers, conn, fn {header, value}, acc ->
+        Plug.Conn.put_req_header(acc, header, value)
+      end)
 
     conn =
       if body do
@@ -95,6 +108,101 @@ defmodule Claptrap.API.Handlers.SinksTest do
     test "returns 400 for malformed UUID" do
       conn = call(:get, "/api/v1/sinks/not-a-uuid")
       assert conn.status == 400
+    end
+  end
+
+  describe "GET /api/v1/sinks/:id content negotiation" do
+    test "returns RSS output when requested and materialized" do
+      {:ok, sink} = Catalog.create_sink(@rss_sink_attrs)
+      assert :ok = RssFeed.materialize(sink, [])
+
+      conn =
+        call_with_headers(
+          :get,
+          "/api/v1/sinks/#{sink.id}",
+          [
+            {"authorization", "Bearer test-api-key"},
+            {"accept", "application/rss+xml"}
+          ]
+        )
+
+      assert conn.status == 200
+      assert Plug.Conn.get_resp_header(conn, "content-type") == ["application/rss+xml; charset=utf-8"]
+      assert conn.resp_body =~ "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
+    end
+
+    test "keeps JSON response when Accept header is missing" do
+      {:ok, sink} = Catalog.create_sink(@rss_sink_attrs)
+      assert :ok = RssFeed.materialize(sink, [])
+
+      conn = call(:get, "/api/v1/sinks/#{sink.id}")
+
+      assert conn.status == 200
+      assert Plug.Conn.get_resp_header(conn, "content-type") == ["application/json; charset=utf-8"]
+      assert Jason.decode!(conn.resp_body)["id"] == sink.id
+    end
+
+    test "returns 406 when requesting RSS from unsupported sink type" do
+      {:ok, sink} = Catalog.create_sink(@sink_attrs)
+
+      conn =
+        call_with_headers(
+          :get,
+          "/api/v1/sinks/#{sink.id}",
+          [
+            {"authorization", "Bearer test-api-key"},
+            {"accept", "application/rss+xml"}
+          ]
+        )
+
+      assert conn.status == 406
+      assert Jason.decode!(conn.resp_body) == %{"error" => "not acceptable"}
+    end
+
+    test "returns 404 when RSS output is not materialized yet" do
+      {:ok, sink} = Catalog.create_sink(Map.put(@rss_sink_attrs, :enabled, false))
+
+      conn =
+        call_with_headers(
+          :get,
+          "/api/v1/sinks/#{sink.id}",
+          [
+            {"authorization", "Bearer test-api-key"},
+            {"accept", "application/rss+xml"}
+          ]
+        )
+
+      assert conn.status == 404
+      assert Jason.decode!(conn.resp_body) == %{"error" => "not found"}
+    end
+
+    test "bypasses auth for RSS output requests" do
+      {:ok, sink} = Catalog.create_sink(@rss_sink_attrs)
+      assert :ok = RssFeed.materialize(sink, [])
+
+      conn =
+        call_with_headers(
+          :get,
+          "/api/v1/sinks/#{sink.id}",
+          [{"accept", "application/rss+xml"}]
+        )
+
+      assert conn.status == 200
+      assert Plug.Conn.get_resp_header(conn, "content-type") == ["application/rss+xml; charset=utf-8"]
+    end
+
+    test "still requires auth for JSON output requests" do
+      {:ok, sink} = Catalog.create_sink(@rss_sink_attrs)
+
+      conn =
+        call_with_headers(
+          :get,
+          "/api/v1/sinks/#{sink.id}",
+          [{"accept", "application/json"}]
+        )
+
+      assert conn.status == 401
+      assert Jason.decode!(conn.resp_body) == %{"error" => "unauthorized"}
     end
   end
 
