@@ -8,10 +8,37 @@ defmodule Claptrap.Consumer.WorkerTest do
   import Plug.Conn
 
   alias Claptrap.Catalog
+  alias Claptrap.Consumer.Adapters.IMAP
   alias Claptrap.Consumer.Adapters.RSS
   alias Claptrap.Consumer.Worker
   alias Claptrap.PubSub
   alias Ecto.Adapters.SQL.Sandbox
+
+  defmodule Claptrap.Consumer.Adapters.IMAP do
+    @behaviour Claptrap.Consumer.Adapter
+
+    @impl true
+    def mode, do: :push
+
+    @impl true
+    def validate_config(_config), do: :ok
+
+    @impl true
+    def fetch(_source), do: {:error, :unsupported}
+
+    def start_listener(source) do
+      if pid = Application.get_env(:claptrap, :imap_test_listener_pid) do
+        send(pid, {:imap_listener_started, source.id, self()})
+      end
+
+      :ok
+    end
+
+    @impl true
+    def ingest(_source, {:push, result}), do: result
+
+    def ingest(_source, _message), do: :ignore
+  end
 
   defmodule TestAdapter do
     @behaviour Claptrap.Consumer.Adapter
@@ -33,6 +60,7 @@ defmodule Claptrap.Consumer.WorkerTest do
   end
 
   @source_attrs %{type: "rss", name: "Feed", config: %{"url" => "https://example.com/feed.xml"}}
+  @imap_source_attrs %{type: "imap", name: "Inbox", config: %{"server" => "imap.example.com"}}
 
   setup do
     Req.Test.set_req_test_to_shared()
@@ -218,6 +246,87 @@ defmodule Claptrap.Consumer.WorkerTest do
     assert Process.alive?(worker_pid)
   end
 
+  test "push-mode init starts listener and does not schedule poll timers", %{
+    sandbox_owner: sandbox_owner
+  } do
+    Application.put_env(:claptrap, :imap_test_listener_pid, self())
+    on_exit(fn -> Application.delete_env(:claptrap, :imap_test_listener_pid) end)
+
+    {:ok, source} = Catalog.create_source(@imap_source_attrs)
+    source_id = source.id
+    worker_pid = start_push_worker!(source_id, sandbox_owner)
+
+    assert_receive {:imap_listener_started, ^source_id, ^worker_pid}
+
+    state = :sys.get_state(worker_pid)
+    assert %{adapter: IMAP, mode: :push} = state
+    refute Map.has_key?(state, :timer_ref)
+    refute Map.has_key?(state, :timer_token)
+  end
+
+  test "push-mode ingest success creates entries and broadcasts", %{sandbox_owner: sandbox_owner} do
+    Application.put_env(:claptrap, :imap_test_listener_pid, self())
+    on_exit(fn -> Application.delete_env(:claptrap, :imap_test_listener_pid) end)
+
+    {:ok, source} = Catalog.create_source(@imap_source_attrs)
+    source_id = source.id
+    PubSub.subscribe(PubSub.topic_entries_new())
+
+    worker_pid = start_push_worker!(source_id, sandbox_owner)
+    assert_receive {:imap_listener_started, ^source_id, ^worker_pid}
+
+    send(worker_pid, {:push, {:ok, [%{external_id: "msg-1", title: "Inbox item"}]}})
+
+    assert_receive {:entries_ingested, ^source_id, [entry]}
+    assert entry.external_id == "msg-1"
+    assert [%{external_id: "msg-1"}] = Catalog.list_entries(source_id: source_id)
+    assert %DateTime{} = Catalog.get_source!(source_id).last_consumed_at
+  end
+
+  test "push-mode ingest ignore creates no entries", %{sandbox_owner: sandbox_owner} do
+    Application.put_env(:claptrap, :imap_test_listener_pid, self())
+    on_exit(fn -> Application.delete_env(:claptrap, :imap_test_listener_pid) end)
+
+    {:ok, source} = Catalog.create_source(@imap_source_attrs)
+    source_id = source.id
+    PubSub.subscribe(PubSub.topic_entries_new())
+
+    worker_pid = start_push_worker!(source_id, sandbox_owner)
+    assert_receive {:imap_listener_started, ^source_id, ^worker_pid}
+
+    send(worker_pid, {:push, :ignore})
+
+    refute_receive {:entries_ingested, ^source_id, _entries}, 50
+    assert [] = Catalog.list_entries(source_id: source_id)
+    assert is_nil(Catalog.get_source!(source_id).last_consumed_at)
+  end
+
+  test "push-mode ingest errors are logged and worker keeps running", %{sandbox_owner: sandbox_owner} do
+    Application.put_env(:claptrap, :imap_test_listener_pid, self())
+    on_exit(fn -> Application.delete_env(:claptrap, :imap_test_listener_pid) end)
+
+    {:ok, source} = Catalog.create_source(@imap_source_attrs)
+    source_id = source.id
+    PubSub.subscribe(PubSub.topic_entries_new())
+
+    worker_pid = start_push_worker!(source_id, sandbox_owner)
+    assert_receive {:imap_listener_started, ^source_id, ^worker_pid}
+
+    log =
+      capture_log(fn ->
+        send(worker_pid, {:push, {:error, :bad_payload}})
+        Process.sleep(20)
+      end)
+
+    assert log =~ "push ingest failed"
+    assert Process.alive?(worker_pid)
+
+    send(worker_pid, {:push, {:ok, [%{external_id: "msg-2", title: "After error"}]}})
+
+    assert_receive {:entries_ingested, ^source_id, [entry]}
+    assert entry.external_id == "msg-2"
+  end
+
   test "manual polls do not create overlapping scheduled poll chains", %{sandbox_owner: sandbox_owner} do
     owner = self()
     {:ok, source} = Catalog.create_source(@source_attrs)
@@ -244,6 +353,12 @@ defmodule Claptrap.Consumer.WorkerTest do
 
     Sandbox.allow(Claptrap.Repo, sandbox_owner, pid)
     Req.Test.allow(RSS, self(), pid)
+    pid
+  end
+
+  defp start_push_worker!(source_id, sandbox_owner, opts \\ []) do
+    {:ok, pid} = start_supervised({Worker, Keyword.merge([source_id: source_id], opts)})
+    Sandbox.allow(Claptrap.Repo, sandbox_owner, pid)
     pid
   end
 
