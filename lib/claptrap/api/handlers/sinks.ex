@@ -87,9 +87,6 @@ defmodule Claptrap.API.Handlers.Sinks do
       {:error, reason} when is_binary(reason) ->
         send_resp(conn, 406, Jason.encode!(%{error: "not acceptable"}))
 
-      {:error, _reason} ->
-        send_resp(conn, 500, Jason.encode!(%{error: "internal server error"}))
-
       false ->
         send_resp(conn, 406, Jason.encode!(%{error: "not acceptable"}))
     end
