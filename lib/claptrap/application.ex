@@ -4,6 +4,8 @@ defmodule Claptrap.Application do
 
   @impl true
   def start(_type, _args) do
+    Claptrap.Config.validate!()
+
     children = [
       Claptrap.Repo,
       {Registry, keys: :unique, name: Claptrap.Registry},
