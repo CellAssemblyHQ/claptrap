@@ -89,7 +89,6 @@ defmodule Claptrap.Consumer.Worker do
 
   alias Claptrap.Catalog
   alias Claptrap.Catalog.Source
-  alias Claptrap.Consumer.Adapters.IMAP
   alias Claptrap.Consumer.Adapters.RSS
   alias Claptrap.PubSub
   alias Claptrap.Registry
@@ -130,7 +129,7 @@ defmodule Claptrap.Consumer.Worker do
     validate_source_config!(adapter, source)
 
     state =
-      case adapter.mode() do
+      case adapter_mode!(adapter) do
         :pull ->
           %{
             source: source,
@@ -148,7 +147,7 @@ defmodule Claptrap.Consumer.Worker do
           |> schedule(:poll, initial_poll_delay(opts))
 
         :push ->
-          _ = adapter.start_listener(source)
+          _ = start_listener!(adapter, source)
 
           %{
             source: source,
@@ -319,8 +318,20 @@ defmodule Claptrap.Consumer.Worker do
     end
   end
 
+  defp adapter_mode!(adapter) do
+    apply(adapter, :mode, [])
+  end
+
+  defp start_listener!(adapter, %Source{} = source) do
+    unless Code.ensure_loaded?(adapter) and function_exported?(adapter, :start_listener, 1) do
+      raise ArgumentError, "push adapter #{inspect(adapter)} must implement start_listener/1"
+    end
+
+    apply(adapter, :start_listener, [source])
+  end
+
   defp adapter_for_source_type!("rss"), do: RSS
-  defp adapter_for_source_type!("imap"), do: IMAP
+  defp adapter_for_source_type!("imap"), do: Claptrap.Consumer.Adapters.IMAP
 
   defp adapter_for_source_type!(type) do
     raise ArgumentError, "unsupported consumer source type: #{inspect(type)}"

@@ -14,8 +14,8 @@ defmodule Claptrap.Consumer.WorkerTest do
   alias Claptrap.PubSub
   alias Ecto.Adapters.SQL.Sandbox
 
-  defmodule Claptrap.Consumer.Adapters.IMAP do
-    @behaviour Claptrap.Consumer.Adapter
+  defmodule :"Elixir.Claptrap.Consumer.Adapters.IMAP" do
+    @behaviour :"Elixir.Claptrap.Consumer.Adapter"
 
     @impl true
     def mode, do: :push
@@ -41,7 +41,7 @@ defmodule Claptrap.Consumer.WorkerTest do
   end
 
   defmodule TestAdapter do
-    @behaviour Claptrap.Consumer.Adapter
+    @behaviour :"Elixir.Claptrap.Consumer.Adapter"
 
     @impl true
     def mode, do: :pull
