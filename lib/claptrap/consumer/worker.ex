@@ -2,8 +2,9 @@ defmodule Claptrap.Consumer.Worker do
   @moduledoc """
   Runs ingestion for a single source as an isolated GenServer process.
 
-  A consumer worker owns the polling lifecycle for one source. It fetches
-  source items through a type-specific adapter, persists normalized entries via
+  A consumer worker owns the ingestion lifecycle for one source. Depending on
+  adapter mode, it either polls on an interval (`:pull`) or receives adapter
+  pushed messages (`:push`). In both paths it persists normalized entries via
   `Claptrap.Catalog`, and broadcasts newly inserted entries on PubSub so
   downstream producers can route and deliver them.
 
@@ -14,14 +15,15 @@ defmodule Claptrap.Consumer.Worker do
   ## Lifecycle
 
     1. Load source from the catalog.
-    2. Resolve adapter from `source.type` (currently `"rss"` only).
+    2. Resolve adapter from `source.type` (`"rss"` and `"imap"`).
     3. Validate source config with the adapter.
-    4. Schedule initial poll timer.
-    5. On each poll/retry event, call `adapter.fetch/1`.
-    6. Persist each normalized item as an entry.
-    7. Broadcast successful inserts and schedule the next poll.
+    4. Branch by adapter mode:
+       * `:pull` schedules the initial poll timer and consumes fetch events.
+       * `:push` starts the adapter listener and consumes inbound messages.
+    5. Persist each normalized item as an entry.
+    6. Broadcast successful inserts.
 
-  ## Scheduling model
+  ## Scheduling model (`:pull`)
 
   The worker uses a tokenized timer to avoid stale timer events causing
   overlapping poll chains. Every new schedule call cancels the previous timer,
@@ -31,9 +33,9 @@ defmodule Claptrap.Consumer.Worker do
   Manual polling through `poll/1` is supported and reuses the same consume path
   as scheduled polls.
 
-  ## Retry behavior
+  ## Retry behavior (`:pull`)
 
-  Retry behavior is driven by adapter return values:
+  Retry behavior is driven by `fetch/1` return values:
 
     * `{:ok, items}` resets retry count and schedules the normal poll interval.
     * `{:error, reason}` schedules exponential backoff retry while
@@ -44,9 +46,21 @@ defmodule Claptrap.Consumer.Worker do
   Backoff delay is `base * 2^(attempt - 1) + jitter`, capped by
   `max_retry_delay`.
 
+  ## Push message handling (`:push`)
+
+  Push-mode adapters own listener lifecycle and deliver arbitrary messages to
+  the worker process. For each message, the worker delegates to
+  `adapter.ingest/2` and:
+
+    * persists entries when `{:ok, items}` is returned
+    * ignores `:ignore`
+    * logs warning and continues on `{:error, reason}`
+
+  No retry chain is used in push mode because each message is independent.
+
   ## Persistence and broadcast semantics
 
-  For each fetched item, the worker:
+  For each consumed item, the worker:
 
     * injects `source_id`
     * defaults entry `status` to `"unread"` when missing
@@ -58,14 +72,14 @@ defmodule Claptrap.Consumer.Worker do
   `{:entries_ingested, source_id, entries}` on
   `Claptrap.PubSub.topic_entries_new/0`.
 
-  After a fetch attempt completes successfully, the worker updates
+  After a successful pull fetch or push ingest, the worker updates
   `source.last_consumed_at` to current UTC time truncated to seconds.
 
   ## Failure boundaries
 
   Adapter validation and unsupported source types raise `ArgumentError` during
-  initialization. Adapter exceptions during fetch are not rescued in this
-  module; they crash this worker process and rely on OTP supervision for
+  initialization. Adapter exceptions during fetch/ingest are not rescued in
+  this module; they crash this worker process and rely on OTP supervision for
   restart.
   """
 
@@ -115,24 +129,54 @@ defmodule Claptrap.Consumer.Worker do
     validate_source_config!(adapter, source)
 
     state =
-      %{
-        source: source,
-        adapter: adapter,
-        poll_interval: Keyword.get(opts, :poll_interval, @default_poll_interval),
-        retry_count: 0,
-        max_retries: Keyword.get(opts, :max_retries, @default_max_retries),
-        retry_base_interval: Keyword.get(opts, :retry_base_interval, @default_retry_base_interval),
-        max_retry_delay: Keyword.get(opts, :max_retry_delay, @default_max_retry_delay),
-        retry_jitter: Keyword.get(opts, :retry_jitter, @default_retry_jitter),
-        timer_ref: nil,
-        timer_token: nil
-      }
-      |> schedule(:poll, initial_poll_delay(opts))
+      case adapter_mode!(adapter) do
+        :pull ->
+          %{
+            source: source,
+            adapter: adapter,
+            mode: :pull,
+            poll_interval: Keyword.get(opts, :poll_interval, @default_poll_interval),
+            retry_count: 0,
+            max_retries: Keyword.get(opts, :max_retries, @default_max_retries),
+            retry_base_interval: Keyword.get(opts, :retry_base_interval, @default_retry_base_interval),
+            max_retry_delay: Keyword.get(opts, :max_retry_delay, @default_max_retry_delay),
+            retry_jitter: Keyword.get(opts, :retry_jitter, @default_retry_jitter),
+            timer_ref: nil,
+            timer_token: nil
+          }
+          |> schedule(:poll, initial_poll_delay(opts))
+
+        :push ->
+          _ = start_listener!(adapter, source)
+
+          %{
+            source: source,
+            adapter: adapter,
+            mode: :push
+          }
+
+        mode ->
+          raise ArgumentError, "unsupported adapter mode #{inspect(mode)} for source=#{source.id}"
+      end
 
     {:ok, state}
   end
 
   @impl true
+  def handle_info(message, %{mode: :push} = state) do
+    case state.adapter.ingest(state.source, message) do
+      {:ok, raw_items} ->
+        {:noreply, push_consume(state, raw_items)}
+
+      :ignore ->
+        {:noreply, state}
+
+      {:error, reason} ->
+        Logger.warning("Consumer.Worker push ingest failed source=#{state.source.id}: #{inspect(reason)}")
+        {:noreply, state}
+    end
+  end
+
   def handle_info(message, state) when message in [:poll, :retry] do
     {:noreply, consume(state)}
   end
@@ -164,6 +208,18 @@ defmodule Claptrap.Consumer.Worker do
       {:error, reason} ->
         retry_or_reschedule(state, reason)
     end
+  end
+
+  defp push_consume(state, raw_items) do
+    entries = Enum.map(raw_items, &create_entry(state.source, &1))
+    new_entries = Enum.filter(entries, &match?(%{id: id} when not is_nil(id), &1))
+    source = mark_consumed!(state.source)
+
+    if new_entries != [] do
+      PubSub.broadcast(PubSub.topic_entries_new(), {:entries_ingested, source.id, new_entries})
+    end
+
+    %{state | source: source}
   end
 
   defp create_entry(%Source{} = source, attrs) do
@@ -262,7 +318,20 @@ defmodule Claptrap.Consumer.Worker do
     end
   end
 
+  defp adapter_mode!(adapter) do
+    apply(adapter, :mode, [])
+  end
+
+  defp start_listener!(adapter, %Source{} = source) do
+    unless Code.ensure_loaded?(adapter) and function_exported?(adapter, :start_listener, 1) do
+      raise ArgumentError, "push adapter #{inspect(adapter)} must implement start_listener/1"
+    end
+
+    apply(adapter, :start_listener, [source])
+  end
+
   defp adapter_for_source_type!("rss"), do: RSS
+  defp adapter_for_source_type!("imap"), do: Claptrap.Consumer.Adapters.IMAP
 
   defp adapter_for_source_type!(type) do
     raise ArgumentError, "unsupported consumer source type: #{inspect(type)}"

@@ -1,7 +1,7 @@
 # Consumer
 
-A supervised polling pipeline that fetches content from external
-sources, normalizes it into entries, persists them via
+A supervised ingestion pipeline that fetches or receives content from
+external sources, normalizes it into entries, persists them via
 `Claptrap.Catalog`, and broadcasts new entries over PubSub for
 downstream producers.
 
@@ -12,7 +12,7 @@ downstream producers.
                │
                │ every 30s: ensure worker per enabled source
                ▼
-Source (DB) ──▶ Worker ──▶ Adapter.fetch() ──▶ External feed
+Source (DB) ──▶ Worker ──▶ Adapter.fetch()/Adapter.ingest()
                   │
                   ├──▶ Catalog.create_entry()
                   └──▶ PubSub.broadcast("entries:new")
@@ -38,8 +38,8 @@ crashes, existing workers keep running.
 ## Subdirectories
 
 - **`adapters/`** — Concrete implementations of the
-  `Claptrap.Consumer.Adapter` behaviour. Currently only RSS
-  (handles both RSS and Atom feeds).
+  `Claptrap.Consumer.Adapter` behaviour (RSS pull mode, IMAP push
+  mode).
 
 ## Key concepts
 
@@ -48,24 +48,27 @@ The adapter behaviour defines the contract for source types:
 ```elixir
 @callback mode() :: :pull | :push
 @callback fetch(Source.t()) :: {:ok, [map()]} | {:error, term()}
-@callback ingest(term(), Source.t()) :: {:ok, [map()]} | {:error, term()}
+@callback ingest(Source.t(), term()) :: {:ok, [map()]} | {:error, term()} | :ignore
 @callback validate_config(map()) :: :ok | {:error, String.t()}
 ```
 
-Currently only `:pull` mode is implemented. The worker resolves
-the adapter from the source's `type` field at init time.
+The worker resolves the adapter from the source's `type` field at init
+time and branches by adapter mode.
 
 Each worker follows a three-phase lifecycle:
 
 1. **Init** — Loads the source from the DB, resolves the adapter,
-   validates config, schedules the first poll.
-2. **Poll** — Calls `adapter.fetch(source)`, maps results through
-   `Catalog.create_entry/1`, broadcasts new entries, resets retry
-   count, schedules next poll.
-3. **Retry** — On transient errors, uses exponential backoff
-   (`500ms × 2^attempt + jitter`, capped at 30s, max 5 retries).
-   After exhausting retries, falls back to the normal poll
-   interval.
+   validates config, then:
+   - for `:pull`: schedules the first poll
+   - for `:push`: starts adapter-owned listener process
+2. **Consume** — Depending on mode:
+   - `:pull`: handles `:poll`/`:retry`, calls `adapter.fetch(source)`
+   - `:push`: handles inbound messages, calls
+     `adapter.ingest(source, message)`
+3. **Retry (`:pull` only)** — On transient fetch errors, uses
+   exponential backoff (`500ms × 2^attempt + jitter`, capped at 30s,
+   max 5 retries). After exhausting retries, falls back to the normal
+   poll interval.
 
 ## Notes
 
@@ -76,6 +79,8 @@ Each worker follows a three-phase lifecycle:
   recently scheduled timer is honored, preventing double-polls.
 - The RSS adapter disables `Req` retries internally and handles
   retry logic at the worker level instead.
+- Push adapters own listener lifecycle and should return `:ignore` from
+  `ingest/2` for unrelated messages.
 - Adding a new source type requires implementing the
   `Claptrap.Consumer.Adapter` behaviour and adding a clause to
   `Worker.adapter_for_source_type!/1`.
