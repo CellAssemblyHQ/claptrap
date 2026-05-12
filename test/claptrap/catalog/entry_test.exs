@@ -51,6 +51,29 @@ defmodule Claptrap.Catalog.EntryTest do
       end
     end
 
+    test "rejects oversize text fields" do
+      # Regression guard for the staging crash loop in which a long upstream
+      # `url` raised Postgrex 22001 out of `Catalog.create_entry/1` instead of
+      # returning `{:error, changeset}`. The changeset is now the source of
+      # truth for length limits; the columns are unbounded `:text`.
+      cases = [
+        {:external_id, 513},
+        {:title, 1_025},
+        {:url, 4_097},
+        {:author, 257},
+        {:summary, 16_385}
+      ]
+
+      for {field, len} <- cases do
+        attrs = Map.put(@valid_attrs, field, String.duplicate("x", len))
+        changeset = Entry.changeset(%Entry{}, attrs)
+
+        refute changeset.valid?, "expected #{field} of length #{len} to be invalid"
+        assert %{^field => [message | _]} = errors_on(changeset)
+        assert message =~ "should be at most"
+      end
+    end
+
     test "optional fields are accepted" do
       attrs =
         Map.merge(@valid_attrs, %{

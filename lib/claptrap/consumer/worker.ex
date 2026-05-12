@@ -53,8 +53,10 @@ defmodule Claptrap.Consumer.Worker do
     * merges source tags with item tags
     * calls `Catalog.create_entry/1`
 
-  Failed inserts are logged and skipped. Successful inserts are collected and
-  only entries with a persisted `id` are broadcast in
+  Per-item failures are isolated: `Catalog.create_entry/1` returns
+  `{:ok, entry} | {:error, changeset}` and the worker partitions on that, so a
+  single bad item never blocks the rest of the batch or crashes the worker.
+  Failed inserts are logged and skipped. Successful inserts are broadcast in
   `{:entries_ingested, source_id, entries}` on
   `Claptrap.PubSub.topic_entries_new/0`.
 
@@ -148,8 +150,14 @@ defmodule Claptrap.Consumer.Worker do
   defp consume(state) do
     case state.adapter.fetch(state.source) do
       {:ok, raw_items} ->
-        entries = Enum.map(raw_items, &create_entry(state.source, &1))
-        new_entries = Enum.filter(entries, &match?(%{id: id} when not is_nil(id), &1))
+        {new_entries, rejected} =
+          raw_items
+          |> Enum.map(&persist_item(state.source, &1))
+          |> Enum.split_with(&match?({:ok, _}, &1))
+
+        new_entries = Enum.map(new_entries, fn {:ok, entry} -> entry end)
+        Enum.each(rejected, fn {:error, attrs, reason} -> log_rejection(state.source, attrs, reason) end)
+
         source = mark_consumed!(state.source)
 
         if new_entries != [] do
@@ -166,24 +174,23 @@ defmodule Claptrap.Consumer.Worker do
     end
   end
 
-  defp create_entry(%Source{} = source, attrs) do
+  defp persist_item(%Source{} = source, raw_attrs) do
     attrs =
-      attrs
+      raw_attrs
       |> Map.put(:source_id, source.id)
       |> Map.put_new(:status, "unread")
       |> Map.update(:tags, source.tags || [], &merge_tags(source.tags || [], &1))
 
     case Catalog.create_entry(attrs) do
-      {:ok, entry} ->
-        entry
-
-      {:error, changeset} ->
-        Logger.error(
-          "Consumer.Worker failed to persist entry for source=#{source.id}: #{inspect(changeset.errors)} attrs=#{inspect(attrs)}"
-        )
-
-        nil
+      {:ok, entry} -> {:ok, entry}
+      {:error, changeset} -> {:error, attrs, changeset}
     end
+  end
+
+  defp log_rejection(%Source{} = source, attrs, %Ecto.Changeset{errors: errors}) do
+    Logger.error(
+      "Consumer.Worker failed to persist entry for source=#{source.id}: #{inspect(errors)} attrs=#{inspect(attrs)}"
+    )
   end
 
   defp merge_tags(source_tags, item_tags) do
