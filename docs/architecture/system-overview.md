@@ -1,6 +1,4 @@
----
-title: "System overview"
----
+# System overview
 
 Claptrap is structured as a set of Elixir/OTP processes that consume
 content from external sources, normalize it into a common internal

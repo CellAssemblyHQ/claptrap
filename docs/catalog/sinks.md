@@ -1,8 +1,7 @@
----
-title: "Sinks"
-description: "Delivery target resources, their role in producer
-  execution, and their relationship to subscriptions."
----
+# Sinks
+
+Delivery target resources, their role in producer execution, and their
+relationship to subscriptions.
 
 A sink is a configured delivery target that Claptrap can route
 processed content to.

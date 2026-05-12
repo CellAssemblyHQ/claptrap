@@ -1,8 +1,7 @@
----
-title: "Sources"
-description: "Upstream source resources, their role in consumption,
-  and their relationship to entries and subscriptions."
----
+# Sources
+
+Upstream source resources, their role in consumption, and their relationship
+to entries and subscriptions.
 
 A source is a configured upstream content origin that Claptrap knows
 how to consume.
