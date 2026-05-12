@@ -1,8 +1,7 @@
----
-title: "Entries"
-description: "Normalized content entries, type system, timestamps,
-  provenance, deduplication, and typed payloads."
----
+# Entries
+
+Normalized content entries, type system, timestamps, provenance,
+deduplication, and typed payloads.
 
 Entries are Claptrap's normalized representation of content discovered
 from external systems. They are the durable content records persisted
@@ -130,53 +129,53 @@ A unique index on `(source_id, external_id)` supports
 Entries may include an embedded `data` payload with type-specific
 fields.
 
-<Accordion title="Article payload">
-  | Field | Type | Description |
-  | --- | --- | --- |
-  | `site_name` | string | Publication or site name |
-  | `byline` | string | Article-specific author line |
-  | `word_count` | integer | Approximate word count |
-  | `canonical_url` | string | Canonical URL if different from `url` |
-</Accordion>
+### Article payload
 
-<Accordion title="Video payload">
-  | Field | Type | Description |
-  | --- | --- | --- |
-  | `platform` | string | Platform identifier (e.g., `"youtube"`) |
-  | `video_id` | string | Provider-specific video ID |
-  | `channel_id` | string | Upstream channel identifier |
-  | `channel_title` | string | Human-readable channel name |
-  | `duration_seconds` | integer | Normalized runtime in seconds |
-</Accordion>
+| Field | Type | Description |
+| --- | --- | --- |
+| `site_name` | string | Publication or site name |
+| `byline` | string | Article-specific author line |
+| `word_count` | integer | Approximate word count |
+| `canonical_url` | string | Canonical URL if different from `url` |
 
-<Accordion title="Podcast payload">
-  | Field | Type | Description |
-  | --- | --- | --- |
-  | `podcast_title` | string | Show title |
-  | `episode_guid` | string | Episode GUID |
-  | `episode_number` | integer | Episode number |
-  | `season_number` | integer | Season number |
-  | `audio_url` | string | Canonical audio enclosure URL |
-  | `duration_seconds` | integer | Normalized runtime in seconds |
-</Accordion>
+### Video payload
 
-<Accordion title="Book payload">
-  | Field | Type | Description |
-  | --- | --- | --- |
-  | `isbn10` | string | ISBN-10 |
-  | `isbn13` | string | ISBN-13 |
-  | `publisher` | string | Publisher name |
-  | `published_year` | integer | Year of publication |
-</Accordion>
+| Field | Type | Description |
+| --- | --- | --- |
+| `platform` | string | Platform identifier (e.g., `"youtube"`) |
+| `video_id` | string | Provider-specific video ID |
+| `channel_id` | string | Upstream channel identifier |
+| `channel_title` | string | Human-readable channel name |
+| `duration_seconds` | integer | Normalized runtime in seconds |
 
-<Accordion title="Paper payload">
-  | Field | Type | Description |
-  | --- | --- | --- |
-  | `doi` | string | DOI |
-  | `arxiv_id` | string | arXiv identifier |
-  | `venue` | string | Conference, journal, or venue name |
-  | `pdf_url` | string | Direct PDF URL |
-</Accordion>
+### Podcast payload
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `podcast_title` | string | Show title |
+| `episode_guid` | string | Episode GUID |
+| `episode_number` | integer | Episode number |
+| `season_number` | integer | Season number |
+| `audio_url` | string | Canonical audio enclosure URL |
+| `duration_seconds` | integer | Normalized runtime in seconds |
+
+### Book payload
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `isbn10` | string | ISBN-10 |
+| `isbn13` | string | ISBN-13 |
+| `publisher` | string | Publisher name |
+| `published_year` | integer | Year of publication |
+
+### Paper payload
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `doi` | string | DOI |
+| `arxiv_id` | string | arXiv identifier |
+| `venue` | string | Conference, journal, or venue name |
+| `pdf_url` | string | Direct PDF URL |
 
 ## Validation rules
 

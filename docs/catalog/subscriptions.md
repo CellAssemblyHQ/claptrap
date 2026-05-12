@@ -1,8 +1,7 @@
----
-title: "Subscriptions"
-description: "Tag-based routing relationships between sources and
-  sinks, with array overlap matching semantics."
----
+# Subscriptions
+
+Tag-based routing relationships between sources and sinks, with array
+overlap matching semantics.
 
 A subscription is a Catalog-owned routing rule that determines how
 entries are delivered to sinks based on tag matching.

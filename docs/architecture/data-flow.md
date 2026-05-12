@@ -1,6 +1,4 @@
----
-title: "Data flow"
----
+# Data flow
 
 The Claptrap is, in spirit, a series of orchestrated ETL jobs. Consumers pull
 and adapt entries from sources, Producers publish entries to sinks, and the
@@ -26,28 +24,18 @@ they need to perform their responsiblities.
                   +--------------+
 ```
 
-<Steps>
-  <Step title="Source">
-    An external or upstream provider of content to consume into Claptrap.
-    Often, this is a collection of items like RSS feeds, Youtube channels, etc.
-  </Step>
-  <Step title="Consumer">
-    A worker process that consumes entries from a source using type-specific
-    adapters.
-  </Step>
-  <Step title="Catalog / Entry">
-    Claptrap's architectural center of gravity; the central registry. Connects
-    to PostgreSQL to manage all resource definitions -- namely, entries.
-  </Step>
-  <Step title="Producer">
-    A worker process that publishes entries to a sink using type-specific
-    adapters.
-  </Step>
-  <Step title="Sink">
-    An external or downstream destination for entries. Again, this is a
-    collection of items like RSS feeds, webhooks, etc.
-  </Step>
-</Steps>
+1. **Source.** An external or upstream provider of content to consume into
+   Claptrap. Often, this is a collection of items like RSS feeds, Youtube
+   channels, etc.
+2. **Consumer.** A worker process that consumes entries from a source using
+   type-specific adapters.
+3. **Catalog / Entry.** Claptrap's architectural center of gravity; the
+   central registry. Connects to PostgreSQL to manage all resource
+   definitions -- namely, entries.
+4. **Producer.** A worker process that publishes entries to a sink using
+   type-specific adapters.
+5. **Sink.** An external or downstream destination for entries. Again, this
+   is a collection of items like RSS feeds, webhooks, etc.
 
 ## Catalog
 

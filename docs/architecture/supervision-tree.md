@@ -1,8 +1,7 @@
----
-title: "Supervision tree"
-description: "Process hierarchy, restart strategies, and failure
-  domains in Claptrap's OTP supervision tree."
----
+# Supervision tree
+
+Process hierarchy, restart strategies, and failure domains in Claptrap's OTP
+supervision tree.
 
 Every box in the supervision tree is a process or supervisor managing
 processes. The tree is read top-down: parents start before children,
