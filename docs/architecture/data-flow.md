@@ -16,7 +16,7 @@ they need to perform their responsiblities.
 +--------v------------------------------------------------+
 |                      Catalog                            |
 |                    (PostgreSQL)                         |
-|       sources, entries, subscriptions, sinks            |
+|   sources, entries, artifacts, subscriptions, sinks     |
 +---------------------------------------------------------+
                           |
                   +-------v------+
@@ -83,12 +83,17 @@ A single GenServer that owns routing and dispatch:
 
 ## PubSub
 
-Claptrap uses **Phoenix.PubSub** as the internal event bus between
-consumers and producers.
+Claptrap uses Phoenix.PubSub as the internal event bus between
+consumers, producers, and the extractor subsystem. The consumer
+subsystem publishes on `entries:new` when it has just ingested a
+batch, and both the producer router and the extractor router
+subscribe to that topic independently. Neither subsystem knows about
+the other.
 
-PubSub is the subsystem contract boundary — consumers do not know
-about sinks, and producers do not need to know how consumption was
-performed. The Router depends only on the event shape.
+See the [PubSub reference](pubsub.md) for the full set of topics and
+message shapes, and the [extractor architecture](extractor.md) for
+how the extractor subsystem turns those events into stored
+artifacts.
 
 
 ## Entry ordering

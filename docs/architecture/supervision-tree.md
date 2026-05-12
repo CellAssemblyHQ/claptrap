@@ -47,8 +47,22 @@ Claptrap.Application (OTP Application root)
 |         Subscribes to "entries:new", routes to matching
 |         sinks.
 |
++-- Extractor.Supervisor -- strategy: :rest_for_one
+|   +-- Extractor.TaskSupervisor (Task.Supervisor)
+|   |     Supervises one short-lived task per entry being
+|   |     extracted.
+|   |
+|   +-- Extractor.Router (GenServer)
+|         Subscribes to "entries:new", dispatches one
+|         task per entry to the TaskSupervisor.
+|
 +-- Bandit (HTTP server, plug: Claptrap.API.Plug)
 ```
+
+The extractor subsystem follows the same `:rest_for_one` shape as the
+consumer and producer subsystems for the same reason. The router
+depends on the task supervisor existing, so if the task supervisor
+is restarted the router is restarted after it.
 
 ## Why this tree has this shape
 
