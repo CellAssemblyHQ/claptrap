@@ -74,6 +74,14 @@ defmodule Claptrap.Producer.Adapters.RssFeed do
     end
   end
 
+  @impl true
+  def get_output(sink_id) do
+    case get_feed(sink_id) do
+      {:ok, xml, _updated_at} -> {:ok, xml, "application/rss+xml"}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
   defp build_xml(%Sink{} = sink, entries) do
     items = Enum.map_join(entries, "\n", &build_item/1)
 

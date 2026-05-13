@@ -30,6 +30,15 @@ defmodule Claptrap.Producer.Adapter do
             ) ::
               :ok | {:error, term()}
 
+  @callback get_output(sink_id :: Ecto.UUID.t()) ::
+              {:ok, body :: binary(), content_type :: binary()} | {:error, term()}
+
   @callback validate_config(config :: map()) ::
               :ok | {:error, String.t()}
+
+  @optional_callbacks get_output: 1
+
+  @spec for_type(String.t()) :: {:ok, module()} | {:error, String.t()}
+  def for_type("rss"), do: {:ok, Claptrap.Producer.Adapters.RssFeed}
+  def for_type(other), do: {:error, "unknown sink type: #{other}"}
 end
