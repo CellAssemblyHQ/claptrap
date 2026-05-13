@@ -37,6 +37,7 @@ defmodule Claptrap.Catalog.Entry do
     field :title, :string
     field :summary, :string
     field :url, :string
+    field :content_type, :string
     field :author, :string
     field :published_at, :utc_datetime_usec
     field :status, :string
@@ -57,6 +58,7 @@ defmodule Claptrap.Catalog.Entry do
       :title,
       :summary,
       :url,
+      :content_type,
       :author,
       :published_at,
       :status,
